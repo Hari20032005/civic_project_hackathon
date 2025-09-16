@@ -7,6 +7,7 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const db = require('./database');
 const aiService = require('./aiService');
+const escalationService = require('./escalationService');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -48,6 +49,9 @@ const upload = multer({
     }
   }
 });
+
+// Start escalation service
+escalationService.start(30); // Check every 30 minutes
 
 // API Routes
 
@@ -115,6 +119,15 @@ app.post('/report', upload.single('photo'), async (req, res) => {
       }
     }
     
+    // Calculate SLA deadline
+    const escalationServiceInstance = require('./escalationService');
+    const tempReport = {
+      category: aiAnalysis.category,
+      severity: aiAnalysis.severity,
+      created_at: new Date().toISOString()
+    };
+    const slaDeadline = escalationServiceInstance.getSlaDeadline(tempReport);
+    
     if (duplicateInfo) {
       // Handle duplicate report
       const duplicateQuery = `
@@ -122,8 +135,9 @@ app.post('/report', upload.single('photo'), async (req, res) => {
           description, photo_url, latitude, longitude, status,
           category, severity, priority, department,
           ai_analysis, ai_confidence, estimated_cost, estimated_time, urgent,
-          duplicate_of, similarity_score, is_primary
-        ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+          duplicate_of, similarity_score, is_primary,
+          sla_deadline, original_priority
+        ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
       `;
       
       const duplicateParams = [
@@ -144,7 +158,9 @@ app.post('/report', upload.single('photo'), async (req, res) => {
         aiAnalysis.estimatedRepairTime,
         isUrgent ? 1 : 0,
         primaryReportId,
-        duplicateInfo.similarityScore
+        duplicateInfo.similarityScore,
+        slaDeadline.toISOString(),
+        priority
       ];
       
       // Insert duplicate report
@@ -195,7 +211,8 @@ app.post('/report', upload.single('photo'), async (req, res) => {
               estimatedTime: aiAnalysis.estimatedRepairTime,
               urgent: isUrgent,
               technicalAssessment: aiAnalysis.technicalAssessment
-            }
+            },
+            slaDeadline: slaDeadline
           });
         });
       });
@@ -206,8 +223,9 @@ app.post('/report', upload.single('photo'), async (req, res) => {
           description, photo_url, latitude, longitude, status,
           category, severity, priority, department,
           ai_analysis, ai_confidence, estimated_cost, estimated_time, urgent,
-          duplicate_count, is_primary
-        ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)
+          duplicate_count, is_primary,
+          sla_deadline, original_priority
+        ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?)
       `;
       
       const params = [
@@ -223,7 +241,9 @@ app.post('/report', upload.single('photo'), async (req, res) => {
         aiAnalysis.confidence,
         aiAnalysis.estimatedCost,
         aiAnalysis.estimatedRepairTime,
-        isUrgent ? 1 : 0
+        isUrgent ? 1 : 0,
+        slaDeadline.toISOString(),
+        priority
       ];
       
       db.run(query, params, function(err) {
@@ -246,7 +266,8 @@ app.post('/report', upload.single('photo'), async (req, res) => {
             estimatedTime: aiAnalysis.estimatedRepairTime,
             urgent: isUrgent,
             technicalAssessment: aiAnalysis.technicalAssessment
-          }
+          },
+          slaDeadline: slaDeadline
         });
       });
     }
@@ -263,6 +284,7 @@ app.get('/reports', (req, res) => {
   const query = showDuplicates 
     ? `SELECT * FROM reports 
        ORDER BY 
+         escalated DESC,
          urgent DESC,
          CASE severity WHEN 'HIGH' THEN 3 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 1 ELSE 0 END DESC,
          duplicate_count DESC,
@@ -270,6 +292,7 @@ app.get('/reports', (req, res) => {
     : `SELECT * FROM reports 
        WHERE is_primary = 1 
        ORDER BY 
+         escalated DESC,
          urgent DESC,
          CASE severity WHEN 'HIGH' THEN 3 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 1 ELSE 0 END DESC,
          duplicate_count DESC,
@@ -285,7 +308,8 @@ app.get('/reports', (req, res) => {
     const reportsWithAI = rows.map(row => ({
       ...row,
       ai_analysis: row.ai_analysis ? JSON.parse(row.ai_analysis) : null,
-      urgent: Boolean(row.urgent)
+      urgent: Boolean(row.urgent),
+      escalated: Boolean(row.escalated)
     }));
     
     res.json(reportsWithAI);
@@ -301,7 +325,10 @@ app.patch('/report/:id', (req, res) => {
     return res.status(400).json({ error: 'Invalid status. Must be pending, verified, or resolved' });
   }
   
-  const query = 'UPDATE reports SET status = ? WHERE id = ?';
+  // If resolving a report, clear escalation flags
+  const query = status === 'resolved' 
+    ? 'UPDATE reports SET status = ?, escalated = 0, escalation_notified = 0 WHERE id = ?'
+    : 'UPDATE reports SET status = ? WHERE id = ?';
   
   db.run(query, [status, id], function(err) {
     if (err) {
@@ -313,7 +340,10 @@ app.patch('/report/:id', (req, res) => {
       return res.status(404).json({ error: 'Report not found' });
     }
     
-    res.json({ message: 'Report status updated successfully' });
+    res.json({ 
+      message: 'Report status updated successfully',
+      clearedEscalation: status === 'resolved'
+    });
   });
 });
 
@@ -332,7 +362,12 @@ app.get('/report/:id', (req, res) => {
       return res.status(404).json({ error: 'Report not found' });
     }
     
-    res.json(row);
+    res.json({
+      ...row,
+      ai_analysis: row.ai_analysis ? JSON.parse(row.ai_analysis) : null,
+      urgent: Boolean(row.urgent),
+      escalated: Boolean(row.escalated)
+    });
   });
 });
 
@@ -354,7 +389,18 @@ app.get('/analytics', async (req, res) => {
       }));
       
       const insights = await aiService.getIssueInsights(reportsWithAI);
-      res.json(insights);
+      
+      // Add escalation statistics
+      const escalationStats = {
+        totalEscalated: rows.filter(r => r.escalated).length,
+        pendingEscalated: rows.filter(r => r.escalated && r.status !== 'resolved').length,
+        resolvedEscalated: rows.filter(r => r.escalated && r.status === 'resolved').length
+      };
+      
+      res.json({
+        ...insights,
+        escalationStats
+      });
     });
   } catch (error) {
     console.error('Analytics error:', error);
@@ -397,14 +443,16 @@ app.post('/report/:id/resolve', upload.single('resolutionPhoto'), async (req, re
           report.category || 'OTHER'
         );
         
-        // Update report with resolution data
+        // Update report with resolution data and clear escalation flags
         const updateQuery = `
           UPDATE reports 
           SET status = 'resolved',
               resolution_photo_url = ?,
               resolution_date = CURRENT_TIMESTAMP,
               before_after_comparison = ?,
-              ai_verification_score = ?
+              ai_verification_score = ?,
+              escalated = 0,
+              escalation_notified = 0
           WHERE id = ?
         `;
         
@@ -444,7 +492,9 @@ app.post('/report/:id/resolve', upload.single('resolutionPhoto'), async (req, re
           UPDATE reports 
           SET status = 'resolved',
               resolution_photo_url = ?,
-              resolution_date = CURRENT_TIMESTAMP
+              resolution_date = CURRENT_TIMESTAMP,
+              escalated = 0,
+              escalation_notified = 0
           WHERE id = ?
         `;
         
@@ -516,6 +566,33 @@ app.get('/report/:id/resolution', (req, res) => {
       verificationScore: report.ai_verification_score,
       verification: verification
     });
+  });
+});
+
+// GET /escalations - Get escalated reports
+app.get('/escalations', (req, res) => {
+  const query = `
+    SELECT * FROM reports 
+    WHERE escalated = 1 
+    AND status != 'resolved'
+    ORDER BY sla_deadline ASC
+  `;
+  
+  db.all(query, [], (err, rows) => {
+    if (err) {
+      console.error('Database error:', err.message);
+      return res.status(500).json({ error: 'Failed to fetch escalated reports' });
+    }
+    
+    // Parse AI analysis JSON for each row
+    const reportsWithAI = rows.map(row => ({
+      ...row,
+      ai_analysis: row.ai_analysis ? JSON.parse(row.ai_analysis) : null,
+      urgent: Boolean(row.urgent),
+      escalated: Boolean(row.escalated)
+    }));
+    
+    res.json(reportsWithAI);
   });
 });
 

@@ -14,6 +14,13 @@ A comprehensive full-stack web application that leverages **Google Gemini Vision
 - **Confidence Scoring**: Reliability metrics for AI analysis (0-100%)
 - **Fallback System**: Keyword-based classification when AI is unavailable
 
+### ⚡ Fastlane: Auto-Escalation Engine
+- **SLA-Based Deadlines**: Automatic deadlines based on issue severity and category
+- **Auto-Escalation**: Critical issues automatically escalated if not addressed in time
+- **Supervisor Notifications**: Automatic alerts to supervisors for overdue issues
+- **Priority Boosting**: Escalated issues get higher priority in the workflow
+- **Governance Compliance**: Ensures timely response to critical civic issues
+
 ### 📸 Resolution Proof + Public Transparency Mode
 - **Before/After Evidence System**: Admins must upload resolution photos to mark issues as resolved
 - **AI Image Comparison**: Automatic verification that issues have been properly fixed
@@ -35,18 +42,12 @@ A comprehensive full-stack web application that leverages **Google Gemini Vision
 - **AI Verification Scores**: See confidence levels for resolution quality
 - **Public Accountability**: Track municipal response and resolution times
 
-### 🛠️ Admin Features
-- **AI Analytics Dashboard**: Comprehensive insights powered by machine learning
-- **Smart Prioritization**: Issues sorted by AI-determined urgency and severity
-- **Department Workload**: View distribution across municipal departments
-- **Bulk Operations**: Efficiently manage multiple reports simultaneously
-- **Advanced Filtering**: Filter by category, severity, department, or date
-- **Status Management**: Update report status (pending → verified → resolved)
-- **Map Integration**: Detailed location views with clustering for nearby issues
-- **Export Functionality**: Generate reports for external systems
-- **Photo Analysis**: View AI assessment alongside original images
-- **Resolution Proof System**: Upload "after" photos to verify issue resolution with AI validation
-- **Before/After Comparison**: AI-powered verification of resolution quality and completeness
+### ⚡ Fastlane: Auto-Escalation Engine
+- **SLA-Based Deadlines**: Automatic deadlines based on issue severity and category
+- **Auto-Escalation**: Critical issues automatically escalated if not addressed in time
+- **Supervisor Notifications**: Automatic alerts to supervisors for overdue issues
+- **Priority Boosting**: Escalated issues get higher priority in the workflow
+- **Governance Compliance**: Ensures timely response to critical civic issues
 
 ## 💻 Technology Stack
 
@@ -65,6 +66,7 @@ A comprehensive full-stack web application that leverages **Google Gemini Vision
 - **dotenv** for environment configuration
 - **CORS** enabled for cross-origin requests
 - **UUID** for unique file identification
+- **Auto-Escalation Service** for SLA monitoring and report escalation
 
 ### 🎨 Frontend
 - **React 18** with TypeScript for type safety
@@ -208,6 +210,25 @@ Get AI-powered insights and statistics.
 Retrieve all reports with AI analysis.
 - **Response**: Array of enhanced report objects with AI data
 
+#### GET /escalations
+Retrieve all escalated reports that haven't been resolved.
+- **Response**: Array of escalated report objects
+```json
+[
+  {
+    "id": 1,
+    "description": "Large pothole causing traffic issues",
+    "status": "pending",
+    "category": "POTHOLE",
+    "severity": "HIGH",
+    "priority": "HIGH",
+    "sla_deadline": "2025-01-15T14:30:00.000Z",
+    "escalated": 1,
+    "created_at": "2025-01-14T14:30:00.000Z"
+  }
+]
+```
+
 #### PATCH /report/:id
 Update report status.
 - **Body**: `{ status: 'pending' | 'verified' | 'resolved' }`
@@ -326,6 +347,8 @@ If you don't configure the Gemini API key, the system will:
    - View confidence scores and technical analysis
    - Export data for municipal systems
    - Track resolution times and performance metrics
+   - **Auto-Escalation Monitoring**: View and manage escalated reports
+   - **SLA Deadline Tracking**: Monitor approaching deadlines
 
 ## 💾 Enhanced Database Schema
 
@@ -362,6 +385,12 @@ CREATE TABLE reports (
   similarity_score REAL DEFAULT 0,             -- Similarity percentage to primary report
   is_primary BOOLEAN DEFAULT TRUE,             -- Whether this is the primary report
   merged_reports TEXT,                         -- JSON array of duplicate report IDs
+  
+  -- ⚡ Auto-Escalation Fields
+  sla_deadline DATETIME,        -- SLA deadline for this report
+  escalated BOOLEAN DEFAULT FALSE,     -- Whether this report has been escalated
+  escalation_notified BOOLEAN DEFAULT FALSE,  -- Whether supervisors have been notified
+  original_priority TEXT DEFAULT 'MEDIUM',    -- Original priority before escalation
   
   -- Timestamps
   timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -417,12 +446,35 @@ The system can automatically detect and classify these civic issues:
 | 🌳 **VEGETATION_OVERGROWTH** | LOW | Parks & Gardens | 2-3 days |
 | ❓ **OTHER** | MEDIUM | General Administration | Variable |
 
-### 🎯 AI Accuracy Metrics
-- **Overall Accuracy**: 90-95% for common issues
-- **Pothole Detection**: 95%+ accuracy
-- **Garbage/Waste Issues**: 85-90% accuracy
-- **Infrastructure Issues**: 80-90% accuracy
-- **Confidence Threshold**: Issues below 60% confidence flagged for manual review
+### ⚡ SLA Definitions
+
+The auto-escalation system uses the following Service Level Agreements (SLAs) based on issue severity and category:
+
+#### Severity-Based SLAs
+- **HIGH Severity**: 6 hours
+- **MEDIUM Severity**: 24 hours  
+- **LOW Severity**: 72 hours
+
+#### Category-Specific SLAs
+| Category | SLA | Priority Level | Department |
+|----------|-----|----------------|------------|
+| 🗑️ **GARBAGE_OVERFLOW** | 6 hours | HIGH | Sanitation |
+| 💧 **WATER_LEAK** | 6 hours | HIGH | Water Supply |
+| 🌊 **DRAIN_BLOCKAGE** | 12 hours | HIGH | Water Management |
+| 🕳️ **POTHOLE** | 24 hours | HIGH | Road Maintenance |
+| 💡 **STREET_LIGHT** | 24 hours | MEDIUM | Electrical |
+| 🚶 **BROKEN_SIDEWALK** | 48 hours | MEDIUM | Infrastructure |
+| 📍 **ILLEGAL_DUMPING** | 12 hours | MEDIUM | Sanitation |
+| 📍 **DAMAGED_SIGN** | 48 hours | LOW | Traffic Management |
+| 🌳 **VEGETATION_OVERGROWTH** | 72 hours | LOW | Parks & Gardens |
+| ❓ **OTHER** | 24 hours | MEDIUM | General Administration |
+
+#### Escalation Process
+1. **Deadline Monitoring**: System tracks SLA deadlines for all pending reports
+2. **Overdue Detection**: Checks every 30 minutes for missed deadlines
+3. **Priority Escalation**: Automatically boosts priority to HIGH for overdue reports
+4. **Supervisor Notification**: Alerts appropriate supervisors (implementation pending)
+5. **Dashboard Highlighting**: Escalated reports appear at the top of admin views
 
 ## 📱 PWA Features
 

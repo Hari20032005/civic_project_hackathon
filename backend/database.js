@@ -62,7 +62,11 @@ function initializeDatabase() {
       { name: 'resolution_date', type: 'DATETIME' },
       { name: 'before_after_comparison', type: 'TEXT' },
       { name: 'ai_verification_score', type: 'REAL DEFAULT 0' },
-      { name: 'public_transparency', type: 'BOOLEAN DEFAULT TRUE' }
+      { name: 'public_transparency', type: 'BOOLEAN DEFAULT TRUE' },
+      { name: 'sla_deadline', type: 'DATETIME' },
+      { name: 'escalated', type: 'BOOLEAN DEFAULT FALSE' },
+      { name: 'escalation_notified', type: 'BOOLEAN DEFAULT FALSE' },
+      { name: 'original_priority', type: 'TEXT DEFAULT "MEDIUM"' }
     ];
     
     // Add missing columns
