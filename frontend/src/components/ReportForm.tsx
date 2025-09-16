@@ -25,6 +25,9 @@ const ReportForm: React.FC = () => {
   const [manualLongitude, setManualLongitude] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Default location (you can change this to your city's coordinates)
+  const DEFAULT_LOCATION = { latitude: 28.6139, longitude: 77.2090 }; // New Delhi coordinates
+
   useEffect(() => {
     getCurrentLocation();
   }, []);
@@ -51,13 +54,13 @@ const ReportForm: React.FC = () => {
               errorMessage += 'Please allow location access when prompted by your browser.';
               break;
             case error.POSITION_UNAVAILABLE:
-              errorMessage += 'Location information is unavailable. Try refreshing the page.';
+              errorMessage += 'Location information is unavailable. Try refreshing the page or entering coordinates manually.';
               break;
             case error.TIMEOUT:
-              errorMessage += 'Location request timed out. Please try again.';
+              errorMessage += 'Location request timed out. Please try again or enter coordinates manually.';
               break;
             default:
-              errorMessage += 'Please ensure location services are enabled and try again.';
+              errorMessage += 'Please ensure location services are enabled and try again, or enter coordinates manually.';
               break;
           }
           
@@ -71,7 +74,7 @@ const ReportForm: React.FC = () => {
         }
       );
     } else {
-      setErrorMessage('Geolocation is not supported by this browser.');
+      setErrorMessage('Geolocation is not supported by this browser. Please enter coordinates manually.');
       setIsGettingLocation(false);
     }
   };
@@ -437,26 +440,60 @@ const ReportForm: React.FC = () => {
           )}
           {!location && !isGettingLocation && (
             <div>
-              <button
-                type="button"
-                onClick={getCurrentLocation}
-                className="btn btn-small"
-                style={{ marginTop: '0.5rem', marginRight: '0.5rem' }}
-              >
-                📍 Get Current Location
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowManualLocation(!showManualLocation)}
-                className="btn btn-small"
-                style={{ 
-                  marginTop: '0.5rem',
-                  backgroundColor: showManualLocation ? '#f44336' : '#ff9800',
-                  color: 'white'
-                }}
-              >
-                {showManualLocation ? '❌ Cancel Manual' : '✏️ Enter Manually'}
-              </button>
+              <div style={{ 
+                backgroundColor: '#fff3e0', 
+                padding: '1rem', 
+                borderRadius: '8px', 
+                border: '1px solid #ff9800',
+                marginBottom: '1rem'
+              }}>
+                <p style={{ margin: '0 0 0.5rem 0', color: '#e65100' }}>
+                  <strong>📍 Location Required</strong>
+                </p>
+                <p style={{ margin: 0, fontSize: '0.9rem', color: '#e65100' }}>
+                  We need your location to map the civic issue. You can either allow location access, enter coordinates manually, or use default location.
+                </p>
+              </div>
+              
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={getCurrentLocation}
+                  className="btn btn-small"
+                  style={{ 
+                    backgroundColor: '#2196f3',
+                    color: 'white'
+                  }}
+                >
+                  📍 Get Current Location
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLocation(DEFAULT_LOCATION);
+                    // Try to get address for the default coordinates
+                    reverseGeocode(DEFAULT_LOCATION.latitude, DEFAULT_LOCATION.longitude);
+                  }}
+                  className="btn btn-small"
+                  style={{ 
+                    backgroundColor: '#4caf50',
+                    color: 'white'
+                  }}
+                >
+                  🏙️ Use Default Location
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowManualLocation(!showManualLocation)}
+                  className="btn btn-small"
+                  style={{ 
+                    backgroundColor: showManualLocation ? '#f44336' : '#ff9800',
+                    color: 'white'
+                  }}
+                >
+                  {showManualLocation ? '❌ Cancel Manual Entry' : '✏️ Enter Coordinates'}
+                </button>
+              </div>
             </div>
           )}
           
@@ -465,53 +502,88 @@ const ReportForm: React.FC = () => {
               marginTop: '1rem', 
               padding: '1rem', 
               border: '1px solid #ddd', 
-              borderRadius: '4px',
+              borderRadius: '8px',
               backgroundColor: '#f9f9f9'
             }}>
-              <div style={{ marginBottom: '0.5rem', fontSize: '0.875rem', color: '#666' }}>
-                Enter coordinates manually (you can get these from Google Maps):
+              <h4 style={{ margin: '0 0 1rem 0', color: '#333' }}>Enter Location Coordinates</h4>
+              <p style={{ fontSize: '0.875rem', color: '#666', marginBottom: '1rem' }}>
+                You can find coordinates using Google Maps:
+                <br />
+                1. Right-click on the location
+                <br />
+                2. Select "What's here?"
+                <br />
+                3. Copy the coordinates (e.g., 28.6139, 77.2090)
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold' }}>
+                    Latitude
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="e.g., 28.6139"
+                    value={manualLatitude}
+                    onChange={(e) => setManualLatitude(e.target.value)}
+                    step="any"
+                    min="-90"
+                    max="90"
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      border: '1px solid #ccc',
+                      borderRadius: '4px',
+                      fontSize: '1rem'
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 'bold' }}>
+                    Longitude
+                  </label>
+                  <input
+                    type="number"
+                    placeholder="e.g., 77.2090"
+                    value={manualLongitude}
+                    onChange={(e) => setManualLongitude(e.target.value)}
+                    step="any"
+                    min="-180"
+                    max="180"
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      border: '1px solid #ccc',
+                      borderRadius: '4px',
+                      fontSize: '1rem'
+                    }}
+                  />
+                </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                <input
-                  type="number"
-                  placeholder="Latitude (e.g., 28.6139)"
-                  value={manualLatitude}
-                  onChange={(e) => setManualLatitude(e.target.value)}
-                  step="any"
-                  min="-90"
-                  max="90"
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={handleManualLocation}
+                  className="btn btn-small"
                   style={{
-                    padding: '0.5rem',
-                    border: '1px solid #ccc',
-                    borderRadius: '4px'
+                    backgroundColor: '#4caf50',
+                    color: 'white',
+                    flex: 1
                   }}
-                />
-                <input
-                  type="number"
-                  placeholder="Longitude (e.g., 77.2090)"
-                  value={manualLongitude}
-                  onChange={(e) => setManualLongitude(e.target.value)}
-                  step="any"
-                  min="-180"
-                  max="180"
+                >
+                  Use These Coordinates
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowManualLocation(false)}
+                  className="btn btn-small"
                   style={{
-                    padding: '0.5rem',
-                    border: '1px solid #ccc',
-                    borderRadius: '4px'
+                    backgroundColor: '#f44336',
+                    color: 'white'
                   }}
-                />
+                >
+                  Cancel
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={handleManualLocation}
-                className="btn btn-small"
-                style={{
-                  backgroundColor: '#4caf50',
-                  color: 'white'
-                }}
-              >
-                Use These Coordinates
-              </button>
             </div>
           )}
         </div>
