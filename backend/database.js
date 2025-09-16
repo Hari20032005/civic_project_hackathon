@@ -66,7 +66,9 @@ function initializeDatabase() {
       { name: 'sla_deadline', type: 'DATETIME' },
       { name: 'escalated', type: 'BOOLEAN DEFAULT FALSE' },
       { name: 'escalation_notified', type: 'BOOLEAN DEFAULT FALSE' },
-      { name: 'original_priority', type: 'TEXT DEFAULT "MEDIUM"' }
+      { name: 'original_priority', type: 'TEXT DEFAULT "MEDIUM"' },
+      { name: 'blockchain_tx_hash', type: 'TEXT' },  // Blockchain transaction hash
+      { name: 'last_blockchain_update', type: 'DATETIME' }  // Last blockchain update timestamp
     ];
     
     // Add missing columns

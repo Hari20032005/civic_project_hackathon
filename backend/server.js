@@ -8,6 +8,7 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('./database');
 const aiService = require('./aiService');
 const escalationService = require('./escalationService');
+const blockchainService = require('./blockchain');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -49,6 +50,27 @@ const upload = multer({
     }
   }
 });
+
+// Initialize blockchain service
+async function initializeBlockchain() {
+  try {
+    const initialized = await blockchainService.initialize();
+    if (initialized) {
+      console.log('✅ Blockchain service initialized successfully');
+      
+      // Log blockchain info
+      const info = await blockchainService.getBlockchainInfo();
+      console.log('Blockchain Info:', info);
+    } else {
+      console.log('⚠️ Blockchain service initialization failed');
+    }
+  } catch (error) {
+    console.error('Error initializing blockchain service:', error.message);
+  }
+}
+
+// Initialize blockchain service on startup
+initializeBlockchain();
 
 // Start escalation service
 escalationService.start(30); // Check every 30 minutes
@@ -128,6 +150,21 @@ app.post('/report', upload.single('photo'), async (req, res) => {
     };
     const slaDeadline = escalationServiceInstance.getSlaDeadline(tempReport);
     
+    // Log event on blockchain
+    let blockchainTxHash = null;
+    try {
+      const timestamp = Date.now();
+      blockchainTxHash = await blockchainService.logComplaintEvent(
+        0, // Will be replaced with actual ID after insertion
+        'pending',
+        timestamp
+      );
+      console.log('Blockchain transaction hash:', blockchainTxHash);
+    } catch (blockchainError) {
+      console.error('Blockchain logging error:', blockchainError.message);
+      // Continue even if blockchain logging fails
+    }
+    
     if (duplicateInfo) {
       // Handle duplicate report
       const duplicateQuery = `
@@ -136,8 +173,8 @@ app.post('/report', upload.single('photo'), async (req, res) => {
           category, severity, priority, department,
           ai_analysis, ai_confidence, estimated_cost, estimated_time, urgent,
           duplicate_of, similarity_score, is_primary,
-          sla_deadline, original_priority
-        ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+          sla_deadline, original_priority, blockchain_tx_hash, last_blockchain_update
+        ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
       `;
       
       const duplicateParams = [
@@ -160,7 +197,9 @@ app.post('/report', upload.single('photo'), async (req, res) => {
         primaryReportId,
         duplicateInfo.similarityScore,
         slaDeadline.toISOString(),
-        priority
+        priority,
+        blockchainTxHash,
+        new Date().toISOString()
       ];
       
       // Insert duplicate report
@@ -171,6 +210,17 @@ app.post('/report', upload.single('photo'), async (req, res) => {
         }
         
         const duplicateReportId = this.lastID;
+        
+        // Update blockchain with actual report ID
+        if (blockchainTxHash) {
+          blockchainService.logComplaintEvent(
+            duplicateReportId,
+            'pending',
+            Date.now()
+          ).catch(error => {
+            console.error('Blockchain update error:', error.message);
+          });
+        }
         
         // Update primary report's duplicate count and merged reports list
         const updatePrimaryQuery = `
@@ -212,7 +262,8 @@ app.post('/report', upload.single('photo'), async (req, res) => {
               urgent: isUrgent,
               technicalAssessment: aiAnalysis.technicalAssessment
             },
-            slaDeadline: slaDeadline
+            slaDeadline: slaDeadline,
+            blockchainTxHash: blockchainTxHash
           });
         });
       });
@@ -224,8 +275,8 @@ app.post('/report', upload.single('photo'), async (req, res) => {
           category, severity, priority, department,
           ai_analysis, ai_confidence, estimated_cost, estimated_time, urgent,
           duplicate_count, is_primary,
-          sla_deadline, original_priority
-        ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?)
+          sla_deadline, original_priority, blockchain_tx_hash, last_blockchain_update
+        ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, ?, ?, ?)
       `;
       
       const params = [
@@ -243,7 +294,9 @@ app.post('/report', upload.single('photo'), async (req, res) => {
         aiAnalysis.estimatedRepairTime,
         isUrgent ? 1 : 0,
         slaDeadline.toISOString(),
-        priority
+        priority,
+        blockchainTxHash,
+        new Date().toISOString()
       ];
       
       db.run(query, params, function(err) {
@@ -252,10 +305,23 @@ app.post('/report', upload.single('photo'), async (req, res) => {
           return res.status(500).json({ error: 'Failed to save report' });
         }
         
+        const reportId = this.lastID;
+        
+        // Update blockchain with actual report ID
+        if (blockchainTxHash) {
+          blockchainService.logComplaintEvent(
+            reportId,
+            'pending',
+            Date.now()
+          ).catch(error => {
+            console.error('Blockchain update error:', error.message);
+          });
+        }
+        
         res.status(201).json({
-          id: this.lastID,
+          id: reportId,
           message: 'Report submitted successfully',
-          reportId: this.lastID,
+          reportId: reportId,
           isDuplicate: false,
           nearbyReportsChecked: nearbyReports.length,
           aiAnalysis: {
@@ -267,7 +333,8 @@ app.post('/report', upload.single('photo'), async (req, res) => {
             urgent: isUrgent,
             technicalAssessment: aiAnalysis.technicalAssessment
           },
-          slaDeadline: slaDeadline
+          slaDeadline: slaDeadline,
+          blockchainTxHash: blockchainTxHash
         });
       });
     }
@@ -325,24 +392,57 @@ app.patch('/report/:id', (req, res) => {
     return res.status(400).json({ error: 'Invalid status. Must be pending, verified, or resolved' });
   }
   
-  // If resolving a report, clear escalation flags
-  const query = status === 'resolved' 
-    ? 'UPDATE reports SET status = ?, escalated = 0, escalation_notified = 0 WHERE id = ?'
-    : 'UPDATE reports SET status = ? WHERE id = ?';
+  // Get current report data for blockchain logging
+  const getReportQuery = 'SELECT * FROM reports WHERE id = ?';
   
-  db.run(query, [status, id], function(err) {
+  db.get(getReportQuery, [id], async (err, report) => {
     if (err) {
       console.error('Database error:', err.message);
-      return res.status(500).json({ error: 'Failed to update report' });
+      return res.status(500).json({ error: 'Failed to fetch report' });
     }
     
-    if (this.changes === 0) {
+    if (!report) {
       return res.status(404).json({ error: 'Report not found' });
     }
     
-    res.json({ 
-      message: 'Report status updated successfully',
-      clearedEscalation: status === 'resolved'
+    // Log status update on blockchain
+    let blockchainTxHash = null;
+    try {
+      blockchainTxHash = await blockchainService.logComplaintEvent(
+        parseInt(id),
+        status,
+        Date.now()
+      );
+      console.log('Blockchain transaction hash for status update:', blockchainTxHash);
+    } catch (blockchainError) {
+      console.error('Blockchain logging error:', blockchainError.message);
+      // Continue even if blockchain logging fails
+    }
+    
+    // If resolving a report, clear escalation flags
+    const query = status === 'resolved' 
+      ? 'UPDATE reports SET status = ?, escalated = 0, escalation_notified = 0, blockchain_tx_hash = ?, last_blockchain_update = ? WHERE id = ?'
+      : 'UPDATE reports SET status = ?, blockchain_tx_hash = ?, last_blockchain_update = ? WHERE id = ?';
+    
+    const params = status === 'resolved' 
+      ? [status, blockchainTxHash, new Date().toISOString(), id]
+      : [status, blockchainTxHash, new Date().toISOString(), id];
+    
+    db.run(query, params, function(updateErr) {
+      if (updateErr) {
+        console.error('Database error:', updateErr.message);
+        return res.status(500).json({ error: 'Failed to update report' });
+      }
+      
+      if (this.changes === 0) {
+        return res.status(404).json({ error: 'Report not found' });
+      }
+      
+      res.json({ 
+        message: 'Report status updated successfully',
+        clearedEscalation: status === 'resolved',
+        blockchainTxHash: blockchainTxHash
+      });
     });
   });
 });
@@ -369,6 +469,65 @@ app.get('/report/:id', (req, res) => {
       escalated: Boolean(row.escalated)
     });
   });
+});
+
+// GET /verify/:id - Verify report on blockchain
+app.get('/verify/:id', async (req, res) => {
+  const { id } = req.params;
+  
+  // Get report from database
+  const query = 'SELECT * FROM reports WHERE id = ?';
+  
+  db.get(query, [id], async (err, row) => {
+    if (err) {
+      console.error('Database error:', err.message);
+      return res.status(500).json({ error: 'Failed to fetch report' });
+    }
+    
+    if (!row) {
+      return res.status(404).json({ error: 'Report not found' });
+    }
+    
+    try {
+      // Verify on blockchain
+      const verificationResult = await blockchainService.verifyComplaint(
+        parseInt(id),
+        row.status,
+        new Date(row.last_blockchain_update).getTime()
+      );
+      
+      res.json({
+        reportId: id,
+        status: row.status,
+        lastUpdated: row.last_blockchain_update,
+        blockchainTxHash: row.blockchain_tx_hash,
+        verifiedOnBlockchain: verificationResult !== null,
+        blockchainEvent: verificationResult,
+        message: verificationResult !== null 
+          ? 'Report verified on blockchain' 
+          : 'Report not found on blockchain'
+      });
+    } catch (error) {
+      console.error('Blockchain verification error:', error.message);
+      res.status(500).json({ 
+        error: 'Blockchain verification failed',
+        message: error.message
+      });
+    }
+  });
+});
+
+// GET /blockchain/info - Get blockchain connection info
+app.get('/blockchain/info', async (req, res) => {
+  try {
+    const info = await blockchainService.getBlockchainInfo();
+    res.json(info);
+  } catch (error) {
+    res.status(500).json({ 
+      error: 'Failed to get blockchain info',
+      message: error.message
+    });
+  }
 });
 
 // GET /analytics - Get AI-powered insights

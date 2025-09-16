@@ -36,6 +36,12 @@ interface Report {
   before_after_comparison?: string;
   ai_verification_score?: number;
   public_transparency?: boolean;
+  sla_deadline?: string;
+  escalated?: boolean;
+  escalation_notified?: boolean;
+  original_priority?: string;
+  blockchain_tx_hash?: string;
+  last_blockchain_update?: string;
   ai_analysis?: {
     category: string;
     severity: string;
@@ -69,6 +75,8 @@ const AdminDashboard: React.FC = () => {
   const [resolutionPhoto, setResolutionPhoto] = useState<File | null>(null);
   const [uploadingResolution, setUploadingResolution] = useState(false);
   const [resolutionPreview, setResolutionPreview] = useState<string | null>(null);
+  const [verifyingReport, setVerifyingReport] = useState<number | null>(null);
+  const [verificationResults, setVerificationResults] = useState<Record<number, any>>({});
 
   useEffect(() => {
     fetchReports();
@@ -146,6 +154,29 @@ const AdminDashboard: React.FC = () => {
     setShowResolutionUpload(true);
     setResolutionPhoto(null);
     setResolutionPreview(null);
+  };
+
+  const verifyOnBlockchain = async (reportId: number) => {
+    setVerifyingReport(reportId);
+    
+    try {
+      const response = await axios.get(`${API_BASE_URL}/verify/${reportId}`);
+      setVerificationResults(prev => ({
+        ...prev,
+        [reportId]: response.data
+      }));
+      
+      if (response.data.verifiedOnBlockchain) {
+        alert(`✅ Report verified on blockchain!\nTransaction Hash: ${response.data.blockchainTxHash}`);
+      } else {
+        alert('❌ Report not found on blockchain');
+      }
+    } catch (error) {
+      console.error('Blockchain verification error:', error);
+      setError('Failed to verify report on blockchain');
+    } finally {
+      setVerifyingReport(null);
+    }
   };
 
   const handleResolutionPhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -558,6 +589,31 @@ const AdminDashboard: React.FC = () => {
                         {report.ai_verification_score && (
                           <div>AI Score: {report.ai_verification_score.toFixed(1)}%</div>
                         )}
+                      </div>
+                    )}
+                    
+                    {/* Blockchain Verification Button */}
+                    <button
+                      onClick={() => verifyOnBlockchain(report.id)}
+                      className="btn btn-small"
+                      style={{ 
+                        backgroundColor: '#9c27b0', 
+                        color: 'white',
+                        marginTop: '0.25rem'
+                      }}
+                      disabled={verifyingReport === report.id}
+                    >
+                      {verifyingReport === report.id ? '🔍 Verifying...' : '🔗 Verify on Blockchain'}
+                    </button>
+                    
+                    {report.blockchain_tx_hash && (
+                      <div style={{ 
+                        fontSize: '0.7rem', 
+                        color: '#4caf50', 
+                        textAlign: 'center',
+                        marginTop: '0.25rem'
+                      }}>
+                        ✅ Logged
                       </div>
                     )}
                     

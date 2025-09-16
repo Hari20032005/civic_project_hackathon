@@ -51,14 +51,6 @@ A comprehensive full-stack web application that leverages **Google Gemini Vision
 
 ## 💻 Technology Stack
 
-### 🤖 AI & Machine Learning
-- **Gemini Vision API**: Advanced image analysis and classification
-- **Sharp**: Image preprocessing and optimization for AI analysis
-- **Custom AI Service**: Intelligent issue categorization and priority assessment
-- **Retry Logic**: Automatic retry with exponential backoff for AI service overloads
-- **Fallback Systems**: Graceful degradation when AI services are unavailable
-- **Image Cleanup**: Automatic cleanup of processed images to save disk space
-
 ### 🚀 Backend
 - **Node.js** with Express.js framework
 - **SQLite** database with enhanced schema for AI data
@@ -67,6 +59,13 @@ A comprehensive full-stack web application that leverages **Google Gemini Vision
 - **CORS** enabled for cross-origin requests
 - **UUID** for unique file identification
 - **Auto-Escalation Service** for SLA monitoring and report escalation
+- **Blockchain Audit Trail** for immutable report tracking
+
+### 🔗 Blockchain Audit Trail
+- **Immutable Record**: All report modifications logged on blockchain
+- **Tamper Detection**: Cryptographic hashes prevent undetected changes
+- **Transparent Verification**: Admin actions publicly verifiable
+- **Free Implementation**: Uses local blockchain simulation for demo
 
 ### 🎨 Frontend
 - **React 18** with TypeScript for type safety
@@ -204,35 +203,43 @@ Get AI-powered insights and statistics.
 }
 ```
 
-### 📊 Standard Endpoints
+### 🔗 Blockchain Audit Trail Endpoints
 
-#### GET /reports
-Retrieve all reports with AI analysis.
-- **Response**: Array of enhanced report objects with AI data
-
-#### GET /escalations
-Retrieve all escalated reports that haven't been resolved.
-- **Response**: Array of escalated report objects
+#### GET /verify/:id
+Verify a report on the blockchain audit trail.
+- **Response**: Verification status and blockchain transaction details
 ```json
-[
-  {
-    "id": 1,
-    "description": "Large pothole causing traffic issues",
-    "status": "pending",
-    "category": "POTHOLE",
-    "severity": "HIGH",
-    "priority": "HIGH",
-    "sla_deadline": "2025-01-15T14:30:00.000Z",
-    "escalated": 1,
-    "created_at": "2025-01-14T14:30:00.000Z"
-  }
-]
+{
+  "reportId": 1,
+  "status": "verified",
+  "lastUpdated": "2025-01-15T14:30:00.000Z",
+  "blockchainTxHash": "0xabc123...",
+  "verifiedOnBlockchain": true,
+  "blockchainEvent": {
+    "complaintId": 1,
+    "complaintHash": "0xdef456...",
+    "status": "verified",
+    "timestamp": 1642254600000,
+    "transactionHash": "0xabc123..."
+  },
+  "message": "Report verified on blockchain"
+}
 ```
 
-#### PATCH /report/:id
-Update report status.
-- **Body**: `{ status: 'pending' | 'verified' | 'resolved' }`
-- **Response**: `{ message }`
+#### GET /blockchain/info
+Get blockchain connection and status information.
+- **Response**: Blockchain network information
+```json
+{
+  "connected": true,
+  "network": "local-simulation",
+  "chainId": 1337,
+  "blockNumber": 42,
+  "account": "0x0000000000000000000000000000000000000000",
+  "balance": "1000 ETH (simulated)",
+  "eventsLogged": 42
+}
+```
 
 #### GET /report/:id
 Get a single report by ID with AI analysis.
@@ -391,6 +398,10 @@ CREATE TABLE reports (
   escalated BOOLEAN DEFAULT FALSE,     -- Whether this report has been escalated
   escalation_notified BOOLEAN DEFAULT FALSE,  -- Whether supervisors have been notified
   original_priority TEXT DEFAULT 'MEDIUM',    -- Original priority before escalation
+  
+  -- 🔗 Blockchain Audit Trail Fields
+  blockchain_tx_hash TEXT,      -- Blockchain transaction hash for this report
+  last_blockchain_update DATETIME,  -- Last blockchain update timestamp
   
   -- Timestamps
   timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
