@@ -60,8 +60,8 @@ app.post('/report', upload.single('photo'), async (req, res) => {
       return res.status(400).json({ error: 'Photo is required' });
     }
     
-    if (!description || !latitude || !longitude) {
-      return res.status(400).json({ error: 'Description, latitude, and longitude are required' });
+    if (!latitude || !longitude) {
+      return res.status(400).json({ error: 'Latitude and longitude are required' });
     }
 
     const photoUrl = `/uploads/${req.file.filename}`;
@@ -84,7 +84,7 @@ app.post('/report', upload.single('photo'), async (req, res) => {
     `;
     
     const params = [
-      description,
+      description || '', // Handle empty description
       photoUrl,
       parseFloat(latitude),
       parseFloat(longitude),

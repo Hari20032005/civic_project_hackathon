@@ -123,6 +123,8 @@ class CivicIssueDetector {
       const prompt = `
         You are an expert AI system for analyzing civic infrastructure issues. 
         
+        IMPORTANT: Analyze this image FIRST and determine what civic issue is shown based PRIMARILY on what you see in the image. The user description should only be used as supplementary context if needed.
+        
         Analyze this image and determine:
         1. What type of civic issue is shown (if any)
         2. The severity level (LOW, MEDIUM, HIGH)
@@ -130,7 +132,7 @@ class CivicIssueDetector {
         4. Safety concerns (if any)
         5. Recommended action priority
 
-        User provided description: "${userDescription}"
+        ${userDescription ? `User provided additional context: "${userDescription}"` : 'No additional context provided by user.'}
 
         Available issue categories:
         - POTHOLE: Road surface damage
@@ -194,28 +196,34 @@ class CivicIssueDetector {
   }
 
   // Fallback analysis when AI is not available
-  fallbackAnalysis(description) {
+  fallbackAnalysis(description = '') {
     const descriptionLower = description.toLowerCase();
     
     let category = 'OTHER';
     let severity = 'MEDIUM';
+    let assessmentText = 'Image submitted for civic issue reporting';
     
-    // Simple keyword matching
-    if (descriptionLower.includes('pothole') || descriptionLower.includes('road') || descriptionLower.includes('crack')) {
-      category = 'POTHOLE';
-      severity = 'HIGH';
-    } else if (descriptionLower.includes('light') || descriptionLower.includes('lamp')) {
-      category = 'STREET_LIGHT';
-      severity = 'MEDIUM';
-    } else if (descriptionLower.includes('garbage') || descriptionLower.includes('trash') || descriptionLower.includes('waste')) {
-      category = 'GARBAGE_OVERFLOW';
-      severity = 'HIGH';
-    } else if (descriptionLower.includes('drain') || descriptionLower.includes('water') || descriptionLower.includes('flood')) {
-      category = 'DRAIN_BLOCKAGE';
-      severity = 'HIGH';
-    } else if (descriptionLower.includes('sidewalk') || descriptionLower.includes('pavement')) {
-      category = 'BROKEN_SIDEWALK';
-      severity = 'MEDIUM';
+    // Simple keyword matching only if description is provided
+    if (description && description.trim()) {
+      if (descriptionLower.includes('pothole') || descriptionLower.includes('road') || descriptionLower.includes('crack')) {
+        category = 'POTHOLE';
+        severity = 'HIGH';
+      } else if (descriptionLower.includes('light') || descriptionLower.includes('lamp')) {
+        category = 'STREET_LIGHT';
+        severity = 'MEDIUM';
+      } else if (descriptionLower.includes('garbage') || descriptionLower.includes('trash') || descriptionLower.includes('waste')) {
+        category = 'GARBAGE_OVERFLOW';
+        severity = 'HIGH';
+      } else if (descriptionLower.includes('drain') || descriptionLower.includes('water') || descriptionLower.includes('flood')) {
+        category = 'DRAIN_BLOCKAGE';
+        severity = 'HIGH';
+      } else if (descriptionLower.includes('sidewalk') || descriptionLower.includes('pavement')) {
+        category = 'BROKEN_SIDEWALK';
+        severity = 'MEDIUM';
+      }
+      assessmentText = `Issue categorized based on description keywords: ${description}`;
+    } else {
+      assessmentText = 'Image submitted without description - manual review required for proper categorization';
     }
 
     const categoryInfo = this.issueCategories[category];
@@ -223,9 +231,9 @@ class CivicIssueDetector {
     return {
       issueDetected: true,
       category: category,
-      confidence: 60, // Lower confidence for fallback
+      confidence: description && description.trim() ? 60 : 40, // Lower confidence without description
       severity: severity,
-      technicalAssessment: `Issue categorized based on description keywords: ${description}`,
+      technicalAssessment: assessmentText,
       safetyConcerns: ['Manual assessment required'],
       recommendedActions: ['Verify issue on-site', 'Assign appropriate department'],
       estimatedUrgency: severity === 'HIGH' ? 'URGENT' : 'MODERATE',

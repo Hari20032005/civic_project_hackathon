@@ -20,6 +20,9 @@ const ReportForm: React.FC = () => {
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState<any>(null);
   const [showAiAnalysis, setShowAiAnalysis] = useState(false);
+  const [showManualLocation, setShowManualLocation] = useState(false);
+  const [manualLatitude, setManualLatitude] = useState('');
+  const [manualLongitude, setManualLongitude] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -40,20 +43,54 @@ const ReportForm: React.FC = () => {
           reverseGeocode(latitude, longitude);
         },
         (error) => {
-          console.error('Error getting location:', error);
-          setErrorMessage('Unable to get your location. Please ensure location services are enabled.');
+          console.error('Geolocation error:', error);
+          let errorMessage = 'Unable to get your location. ';
+          
+          switch(error.code) {
+            case error.PERMISSION_DENIED:
+              errorMessage += 'Please allow location access when prompted by your browser.';
+              break;
+            case error.POSITION_UNAVAILABLE:
+              errorMessage += 'Location information is unavailable. Try refreshing the page.';
+              break;
+            case error.TIMEOUT:
+              errorMessage += 'Location request timed out. Please try again.';
+              break;
+            default:
+              errorMessage += 'Please ensure location services are enabled and try again.';
+              break;
+          }
+          
+          setErrorMessage(errorMessage);
           setIsGettingLocation(false);
         },
         {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0
+          enableHighAccuracy: false, // Set to false for better compatibility
+          timeout: 15000, // Increase timeout
+          maximumAge: 300000 // Accept cached location up to 5 minutes old
         }
       );
     } else {
       setErrorMessage('Geolocation is not supported by this browser.');
       setIsGettingLocation(false);
     }
+  };
+
+  const handleManualLocation = () => {
+    const lat = parseFloat(manualLatitude);
+    const lng = parseFloat(manualLongitude);
+    
+    if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      setErrorMessage('Please enter valid latitude (-90 to 90) and longitude (-180 to 180) values.');
+      return;
+    }
+    
+    setLocation({ latitude: lat, longitude: lng });
+    setShowManualLocation(false);
+    setErrorMessage('');
+    
+    // Try to get address for the manual coordinates
+    reverseGeocode(lat, lng);
   };
 
   const reverseGeocode = async (latitude: number, longitude: number) => {
@@ -112,10 +149,7 @@ const ReportForm: React.FC = () => {
       return;
     }
     
-    if (!description.trim()) {
-      setErrorMessage('Please provide a description of the issue.');
-      return;
-    }
+    // Description is now optional - no validation needed
     
     if (!location) {
       setErrorMessage('Location information is required.');
@@ -149,13 +183,8 @@ const ReportForm: React.FC = () => {
           setShowAiAnalysis(true);
         }
         
-        // Reset form
-        setDescription('');
-        setPhoto(null);
-        setPhotoPreview(null);
-        if (fileInputRef.current) {
-          fileInputRef.current.value = '';
-        }
+        // Don't reset the form while showing AI analysis
+        // The form will be reset when the user clicks "Submit New Report"
         
         // Scroll to success message
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -263,7 +292,31 @@ const ReportForm: React.FC = () => {
             <div><strong>Est. Cost:</strong> {aiAnalysis.estimatedCost || 'Variable'}</div>
           </div>
           
-          <div style={{ textAlign: 'right', marginTop: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem' }}>
+            <button
+              onClick={() => {
+                // Reset form for a new report
+                setDescription('');
+                setPhoto(null);
+                setPhotoPreview(null);
+                if (fileInputRef.current) {
+                  fileInputRef.current.value = '';
+                }
+                setShowAiAnalysis(false);
+                setSuccessMessage('');
+              }}
+              style={{
+                backgroundColor: '#4caf50',
+                color: 'white',
+                padding: '0.5rem 1rem',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.875rem',
+                border: 'none'
+              }}
+            >
+              Submit New Report
+            </button>
             <button
               onClick={() => setShowAiAnalysis(false)}
               style={{
@@ -316,14 +369,13 @@ const ReportForm: React.FC = () => {
 
         {/* Description */}
         <div className="form-group">
-          <label htmlFor="description" className="form-label">Description *</label>
+          <label htmlFor="description" className="form-label">Description (Optional)</label>
           <textarea
             id="description"
             className="form-textarea"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Describe the civic issue in detail..."
-            required
+            placeholder="Add any additional details about the civic issue (optional)..."
           />
         </div>
 
@@ -346,14 +398,83 @@ const ReportForm: React.FC = () => {
             </div>
           )}
           {!location && !isGettingLocation && (
-            <button
-              type="button"
-              onClick={getCurrentLocation}
-              className="btn btn-small"
-              style={{ marginTop: '0.5rem' }}
-            >
-              📍 Get Current Location
-            </button>
+            <div>
+              <button
+                type="button"
+                onClick={getCurrentLocation}
+                className="btn btn-small"
+                style={{ marginTop: '0.5rem', marginRight: '0.5rem' }}
+              >
+                📍 Get Current Location
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowManualLocation(!showManualLocation)}
+                className="btn btn-small"
+                style={{ 
+                  marginTop: '0.5rem',
+                  backgroundColor: showManualLocation ? '#f44336' : '#ff9800',
+                  color: 'white'
+                }}
+              >
+                {showManualLocation ? '❌ Cancel Manual' : '✏️ Enter Manually'}
+              </button>
+            </div>
+          )}
+          
+          {showManualLocation && (
+            <div style={{ 
+              marginTop: '1rem', 
+              padding: '1rem', 
+              border: '1px solid #ddd', 
+              borderRadius: '4px',
+              backgroundColor: '#f9f9f9'
+            }}>
+              <div style={{ marginBottom: '0.5rem', fontSize: '0.875rem', color: '#666' }}>
+                Enter coordinates manually (you can get these from Google Maps):
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                <input
+                  type="number"
+                  placeholder="Latitude (e.g., 28.6139)"
+                  value={manualLatitude}
+                  onChange={(e) => setManualLatitude(e.target.value)}
+                  step="any"
+                  min="-90"
+                  max="90"
+                  style={{
+                    padding: '0.5rem',
+                    border: '1px solid #ccc',
+                    borderRadius: '4px'
+                  }}
+                />
+                <input
+                  type="number"
+                  placeholder="Longitude (e.g., 77.2090)"
+                  value={manualLongitude}
+                  onChange={(e) => setManualLongitude(e.target.value)}
+                  step="any"
+                  min="-180"
+                  max="180"
+                  style={{
+                    padding: '0.5rem',
+                    border: '1px solid #ccc',
+                    borderRadius: '4px'
+                  }}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleManualLocation}
+                className="btn btn-small"
+                style={{
+                  backgroundColor: '#4caf50',
+                  color: 'white'
+                }}
+              >
+                Use These Coordinates
+              </button>
+            </div>
           )}
         </div>
 
@@ -361,7 +482,11 @@ const ReportForm: React.FC = () => {
         <button
           type="submit"
           className="btn"
-          disabled={isSubmitting || !photo || !description.trim() || !location}
+          disabled={isSubmitting || !photo || !location || showAiAnalysis}
+          style={{
+            opacity: showAiAnalysis ? 0.5 : 1,
+            cursor: showAiAnalysis ? 'not-allowed' : 'pointer'
+          }}
         >
           {isSubmitting ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
@@ -375,7 +500,7 @@ const ReportForm: React.FC = () => {
               }}></div>
               Analyzing with AI...
             </div>
-          ) : 'Submit Report'}
+          ) : showAiAnalysis ? 'Report Submitted' : 'Submit Report'}
         </button>
       </form>
     </div>
