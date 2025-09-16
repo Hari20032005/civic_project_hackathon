@@ -14,6 +14,16 @@ A comprehensive full-stack web application that leverages **Google Gemini Vision
 - **Confidence Scoring**: Reliability metrics for AI analysis (0-100%)
 - **Fallback System**: Keyword-based classification when AI is unavailable
 
+### 📸 Resolution Proof + Public Transparency Mode
+- **Before/After Evidence System**: Admins must upload resolution photos to mark issues as resolved
+- **AI Image Comparison**: Automatic verification that issues have been properly fixed
+- **Quality Assessment**: AI determines resolution completeness and quality (0-100% scoring)
+- **Public Accountability**: Both before and after photos visible to citizens on the public map
+- **Trust Restoration**: Citizens can verify that reported issues actually get fixed
+- **Transparency Markers**: Color-coded map indicators show which resolved issues have proof
+- **Reliable Processing**: Retry logic for AI service overloads with graceful fallback
+- **Robust Verification**: Works even when AI services are temporarily unavailable
+
 ### 👥 Citizen Features (Public)
 - **Smart Report Submission**: Take or upload photos with instant AI analysis
 - **Real-time AI Feedback**: See immediate classification and priority assessment
@@ -21,6 +31,9 @@ A comprehensive full-stack web application that leverages **Google Gemini Vision
 - **Mobile-optimized**: Progressive Web App (PWA) with native camera integration
 - **Interactive Map**: View all reported issues with color-coded status markers
 - **Issue Categories**: 10+ predefined categories from potholes to illegal dumping
+- **Resolution Transparency**: View "before/after" photo comparisons for resolved issues
+- **AI Verification Scores**: See confidence levels for resolution quality
+- **Public Accountability**: Track municipal response and resolution times
 
 ### 🛠️ Admin Features
 - **AI Analytics Dashboard**: Comprehensive insights powered by machine learning
@@ -32,13 +45,18 @@ A comprehensive full-stack web application that leverages **Google Gemini Vision
 - **Map Integration**: Detailed location views with clustering for nearby issues
 - **Export Functionality**: Generate reports for external systems
 - **Photo Analysis**: View AI assessment alongside original images
+- **Resolution Proof System**: Upload "after" photos to verify issue resolution with AI validation
+- **Before/After Comparison**: AI-powered verification of resolution quality and completeness
 
 ## 💻 Technology Stack
 
 ### 🤖 AI & Machine Learning
-- **Google Gemini Vision API**: Advanced image analysis and classification
+- **Gemini Vision API**: Advanced image analysis and classification
 - **Sharp**: Image preprocessing and optimization for AI analysis
 - **Custom AI Service**: Intelligent issue categorization and priority assessment
+- **Retry Logic**: Automatic retry with exponential backoff for AI service overloads
+- **Fallback Systems**: Graceful degradation when AI services are unavailable
+- **Image Cleanup**: Automatic cleanup of processed images to save disk space
 
 ### 🚀 Backend
 - **Node.js** with Express.js framework
@@ -55,6 +73,8 @@ A comprehensive full-stack web application that leverages **Google Gemini Vision
 - **Leaflet & React-Leaflet** for interactive mapping
 - **PWA** support with offline capabilities
 - **Responsive Design** with mobile-first approach
+- **Before/After Photo Gallery** for resolved issues
+- **AI Verification Score Display** for resolution quality
 
 ## 📋 Project Structure
 
@@ -98,6 +118,51 @@ Submit a new civic issue report with AI analysis.
   "message": "Report submitted successfully",
   "reportId": 1,
   "aiAnalysis": {
+
+### 📸 Resolution Proof Endpoints
+
+#### POST /report/:id/resolve
+Upload a resolution photo for a verified issue to mark it as resolved.
+- **Body**: FormData with `resolutionPhoto`
+- **Response**: AI-powered verification of resolution quality
+- **Fallback**: If AI service is unavailable, resolution is still saved but requires manual verification
+```json
+{
+  "message": "Resolution photo uploaded and verified successfully",
+  "reportId": 1,
+  "verification": {
+    "resolved": true,
+    "verificationScore": 92,
+    "quality": "EXCELLENT",
+    "recommendation": "APPROVED",
+    "improvementDescription": "Pothole has been properly filled and smoothed",
+    "remainingConcerns": [],
+    "confidence": 95
+  },
+  "resolutionPhotoUrl": "/uploads/resolution_abc123.jpg"
+}
+```
+
+#### GET /report/:id/resolution
+Get resolution verification details for a resolved report.
+- **Response**: Before/after comparison with AI analysis
+```json
+{
+  "reportId": 1,
+  "beforePhoto": "/uploads/before_xyz789.jpg",
+  "afterPhoto": "/uploads/after_abc123.jpg",
+  "resolutionDate": "2025-01-15T14:30:00.000Z",
+  "verificationScore": 92,
+  "verification": {
+    "resolved": true,
+    "verificationScore": 92,
+    "resolution_quality": "EXCELLENT",
+    "improvementDescription": "Issue has been properly resolved",
+    "remainingConcerns": [],
+    "publicRecommendation": "APPROVED"
+  }
+}
+```
     "category": "POTHOLE",
     "severity": "HIGH",
     "confidence": 95,
@@ -284,6 +349,19 @@ CREATE TABLE reports (
   estimated_cost TEXT DEFAULT 'Unknown',
   estimated_time TEXT DEFAULT 'Unknown',
   urgent BOOLEAN DEFAULT FALSE,
+  
+  -- 📸 Resolution Proof Fields
+  resolution_photo_url TEXT,     -- URL to resolution/after photo
+  resolution_date DATETIME,      -- When the issue was marked as resolved
+  before_after_comparison TEXT,  -- JSON with AI comparison results
+  ai_verification_score REAL,    -- AI confidence in resolution quality (0-100)
+  
+  -- 🔄 Duplicate Detection Fields
+  duplicate_of INTEGER REFERENCES reports(id),  -- Points to primary report if this is a duplicate
+  duplicate_count INTEGER DEFAULT 1,           -- How many similar reports exist
+  similarity_score REAL DEFAULT 0,             -- Similarity percentage to primary report
+  is_primary BOOLEAN DEFAULT TRUE,             -- Whether this is the primary report
+  merged_reports TEXT,                         -- JSON array of duplicate report IDs
   
   -- Timestamps
   timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,

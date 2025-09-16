@@ -52,7 +52,17 @@ function initializeDatabase() {
       { name: 'ai_confidence', type: 'INTEGER DEFAULT 0' },
       { name: 'estimated_cost', type: 'TEXT DEFAULT "Unknown"' },
       { name: 'estimated_time', type: 'TEXT DEFAULT "Unknown"' },
-      { name: 'urgent', type: 'BOOLEAN DEFAULT FALSE' }
+      { name: 'urgent', type: 'BOOLEAN DEFAULT FALSE' },
+      { name: 'duplicate_of', type: 'INTEGER REFERENCES reports(id)' },
+      { name: 'duplicate_count', type: 'INTEGER DEFAULT 1' },
+      { name: 'similarity_score', type: 'REAL DEFAULT 0' },
+      { name: 'is_primary', type: 'BOOLEAN DEFAULT TRUE' },
+      { name: 'merged_reports', type: 'TEXT' },
+      { name: 'resolution_photo_url', type: 'TEXT' },
+      { name: 'resolution_date', type: 'DATETIME' },
+      { name: 'before_after_comparison', type: 'TEXT' },
+      { name: 'ai_verification_score', type: 'REAL DEFAULT 0' },
+      { name: 'public_transparency', type: 'BOOLEAN DEFAULT TRUE' }
     ];
     
     // Add missing columns

@@ -75,51 +75,181 @@ app.post('/report', upload.single('photo'), async (req, res) => {
     const priority = aiAnalysis.severity || 'MEDIUM';
     const isUrgent = aiAnalysis.estimatedUrgency === 'IMMEDIATE' || aiAnalysis.estimatedUrgency === 'URGENT';
     
-    const query = `
-      INSERT INTO reports (
-        description, photo_url, latitude, longitude, status,
-        category, severity, priority, department,
-        ai_analysis, ai_confidence, estimated_cost, estimated_time, urgent
-      ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
+    // Check for nearby duplicates using geo + AI similarity
+    console.log('Checking for similar nearby reports...');
+    const nearbyReports = await aiService.findNearbyReports(
+      parseFloat(latitude), 
+      parseFloat(longitude), 
+      50 // 50 meter radius
+    );
     
-    const params = [
-      description || '', // Handle empty description
-      photoUrl,
-      parseFloat(latitude),
-      parseFloat(longitude),
-      aiAnalysis.category,
-      aiAnalysis.severity,
-      priority,
-      aiAnalysis.departmentResponsible,
-      JSON.stringify(aiAnalysis),
-      aiAnalysis.confidence,
-      aiAnalysis.estimatedCost,
-      aiAnalysis.estimatedRepairTime,
-      isUrgent ? 1 : 0
-    ];
+    let duplicateInfo = null;
+    let primaryReportId = null;
     
-    db.run(query, params, function(err) {
-      if (err) {
-        console.error('Database error:', err.message);
-        return res.status(500).json({ error: 'Failed to save report' });
-      }
-      
-      res.status(201).json({
-        id: this.lastID,
-        message: 'Report submitted successfully',
-        reportId: this.lastID,
-        aiAnalysis: {
-          category: aiAnalysis.category,
-          severity: aiAnalysis.severity,
-          confidence: aiAnalysis.confidence,
-          department: aiAnalysis.departmentResponsible,
-          estimatedTime: aiAnalysis.estimatedRepairTime,
-          urgent: isUrgent,
-          technicalAssessment: aiAnalysis.technicalAssessment
+    // Check similarity with nearby reports
+    for (const nearbyReport of nearbyReports) {
+      try {
+        const nearbyImagePath = path.join(__dirname, '..', nearbyReport.photo_url);
+        if (fs.existsSync(nearbyImagePath)) {
+          console.log(`Comparing with report #${nearbyReport.id} (${nearbyReport.distance.toFixed(1)}m away)`);
+          
+          const similarity = await aiService.compareImages(imagePath, nearbyImagePath);
+          console.log(`Similarity score: ${similarity.similarityScore}%`);
+          
+          // If similarity > 80%, mark as duplicate
+          if (similarity.similarityScore >= 80) {
+            duplicateInfo = {
+              primaryReportId: nearbyReport.id,
+              similarityScore: similarity.similarityScore,
+              distance: nearbyReport.distance,
+              reasoning: similarity.reasoning
+            };
+            primaryReportId = nearbyReport.id;
+            console.log(`Duplicate detected! Similar to report #${nearbyReport.id} (${similarity.similarityScore}% similarity)`);
+            break; // Found a duplicate, stop checking
+          }
         }
+      } catch (error) {
+        console.error(`Error comparing with report #${nearbyReport.id}:`, error);
+        // Continue checking other reports
+      }
+    }
+    
+    if (duplicateInfo) {
+      // Handle duplicate report
+      const duplicateQuery = `
+        INSERT INTO reports (
+          description, photo_url, latitude, longitude, status,
+          category, severity, priority, department,
+          ai_analysis, ai_confidence, estimated_cost, estimated_time, urgent,
+          duplicate_of, similarity_score, is_primary
+        ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+      `;
+      
+      const duplicateParams = [
+        description || '',
+        photoUrl,
+        parseFloat(latitude),
+        parseFloat(longitude),
+        aiAnalysis.category,
+        aiAnalysis.severity,
+        priority,
+        aiAnalysis.departmentResponsible,
+        JSON.stringify({
+          ...aiAnalysis,
+          duplicateInfo: duplicateInfo
+        }),
+        aiAnalysis.confidence,
+        aiAnalysis.estimatedCost,
+        aiAnalysis.estimatedRepairTime,
+        isUrgent ? 1 : 0,
+        primaryReportId,
+        duplicateInfo.similarityScore
+      ];
+      
+      // Insert duplicate report
+      db.run(duplicateQuery, duplicateParams, function(err) {
+        if (err) {
+          console.error('Database error saving duplicate:', err.message);
+          return res.status(500).json({ error: 'Failed to save report' });
+        }
+        
+        const duplicateReportId = this.lastID;
+        
+        // Update primary report's duplicate count and merged reports list
+        const updatePrimaryQuery = `
+          UPDATE reports 
+          SET duplicate_count = duplicate_count + 1,
+              merged_reports = CASE 
+                WHEN merged_reports IS NULL OR merged_reports = '' 
+                THEN json_array(?)
+                ELSE json_insert(merged_reports, '$[#]', ?)
+              END
+          WHERE id = ?
+        `;
+        
+        db.run(updatePrimaryQuery, [duplicateReportId, duplicateReportId, primaryReportId], function(updateErr) {
+          if (updateErr) {
+            console.error('Error updating primary report:', updateErr.message);
+          }
+          
+          res.status(201).json({
+            id: duplicateReportId,
+            message: 'Report submitted successfully',
+            reportId: duplicateReportId,
+            isDuplicate: true,
+            primaryReportId: primaryReportId,
+            similarityScore: duplicateInfo.similarityScore,
+            duplicateInfo: {
+              message: `This report appears to be similar to an existing report #${primaryReportId} (${duplicateInfo.similarityScore}% similarity, ${duplicateInfo.distance.toFixed(1)}m away).`,
+              primaryReportId: primaryReportId,
+              similarityScore: duplicateInfo.similarityScore,
+              distance: duplicateInfo.distance,
+              reasoning: duplicateInfo.reasoning
+            },
+            aiAnalysis: {
+              category: aiAnalysis.category,
+              severity: aiAnalysis.severity,
+              confidence: aiAnalysis.confidence,
+              department: aiAnalysis.departmentResponsible,
+              estimatedTime: aiAnalysis.estimatedRepairTime,
+              urgent: isUrgent,
+              technicalAssessment: aiAnalysis.technicalAssessment
+            }
+          });
+        });
       });
-    });
+    } else {
+      // Handle new unique report
+      const query = `
+        INSERT INTO reports (
+          description, photo_url, latitude, longitude, status,
+          category, severity, priority, department,
+          ai_analysis, ai_confidence, estimated_cost, estimated_time, urgent,
+          duplicate_count, is_primary
+        ) VALUES (?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1)
+      `;
+      
+      const params = [
+        description || '',
+        photoUrl,
+        parseFloat(latitude),
+        parseFloat(longitude),
+        aiAnalysis.category,
+        aiAnalysis.severity,
+        priority,
+        aiAnalysis.departmentResponsible,
+        JSON.stringify(aiAnalysis),
+        aiAnalysis.confidence,
+        aiAnalysis.estimatedCost,
+        aiAnalysis.estimatedRepairTime,
+        isUrgent ? 1 : 0
+      ];
+      
+      db.run(query, params, function(err) {
+        if (err) {
+          console.error('Database error:', err.message);
+          return res.status(500).json({ error: 'Failed to save report' });
+        }
+        
+        res.status(201).json({
+          id: this.lastID,
+          message: 'Report submitted successfully',
+          reportId: this.lastID,
+          isDuplicate: false,
+          nearbyReportsChecked: nearbyReports.length,
+          aiAnalysis: {
+            category: aiAnalysis.category,
+            severity: aiAnalysis.severity,
+            confidence: aiAnalysis.confidence,
+            department: aiAnalysis.departmentResponsible,
+            estimatedTime: aiAnalysis.estimatedRepairTime,
+            urgent: isUrgent,
+            technicalAssessment: aiAnalysis.technicalAssessment
+          }
+        });
+      });
+    }
     
   } catch (error) {
     console.error('Error creating report:', error);
@@ -127,9 +257,23 @@ app.post('/report', upload.single('photo'), async (req, res) => {
   }
 });
 
-// GET /reports - Get all reports with AI analysis
+// GET /reports - Get all reports with AI analysis (sorted by risk priority)
 app.get('/reports', (req, res) => {
-  const query = 'SELECT * FROM reports ORDER BY created_at DESC';
+  const showDuplicates = req.query.includeDuplicates === 'true';
+  const query = showDuplicates 
+    ? `SELECT * FROM reports 
+       ORDER BY 
+         urgent DESC,
+         CASE severity WHEN 'HIGH' THEN 3 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 1 ELSE 0 END DESC,
+         duplicate_count DESC,
+         created_at DESC`
+    : `SELECT * FROM reports 
+       WHERE is_primary = 1 
+       ORDER BY 
+         urgent DESC,
+         CASE severity WHEN 'HIGH' THEN 3 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 1 ELSE 0 END DESC,
+         duplicate_count DESC,
+         created_at DESC`;
   
   db.all(query, [], (err, rows) => {
     if (err) {
@@ -216,6 +360,163 @@ app.get('/analytics', async (req, res) => {
     console.error('Analytics error:', error);
     res.status(500).json({ error: 'Failed to generate analytics' });
   }
+});
+
+// POST /report/:id/resolve - Upload resolution photo and verify with AI
+app.post('/report/:id/resolve', upload.single('resolutionPhoto'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'Resolution photo is required' });
+    }
+    
+    // Get the original report
+    const getReportQuery = 'SELECT * FROM reports WHERE id = ?';
+    
+    db.get(getReportQuery, [id], async (err, report) => {
+      if (err) {
+        console.error('Database error:', err.message);
+        return res.status(500).json({ error: 'Failed to fetch report' });
+      }
+      
+      if (!report) {
+        return res.status(404).json({ error: 'Report not found' });
+      }
+      
+      const resolutionPhotoUrl = `/uploads/${req.file.filename}`;
+      const resolutionImagePath = req.file.path;
+      const originalImagePath = path.join(__dirname, '..', report.photo_url);
+      
+      try {
+        // Perform AI verification of resolution
+        console.log('Starting AI resolution verification...');
+        const verification = await aiService.verifyResolution(
+          originalImagePath,
+          resolutionImagePath,
+          report.category || 'OTHER'
+        );
+        
+        // Update report with resolution data
+        const updateQuery = `
+          UPDATE reports 
+          SET status = 'resolved',
+              resolution_photo_url = ?,
+              resolution_date = CURRENT_TIMESTAMP,
+              before_after_comparison = ?,
+              ai_verification_score = ?
+          WHERE id = ?
+        `;
+        
+        db.run(updateQuery, [
+          resolutionPhotoUrl,
+          JSON.stringify(verification),
+          verification.verificationScore,
+          id
+        ], function(updateErr) {
+          if (updateErr) {
+            console.error('Database update error:', updateErr.message);
+            return res.status(500).json({ error: 'Failed to update report' });
+          }
+          
+          res.status(200).json({
+            message: 'Resolution photo uploaded and verified successfully',
+            reportId: id,
+            verification: {
+              resolved: verification.resolved,
+              verificationScore: verification.verificationScore,
+              quality: verification.resolution_quality,
+              recommendation: verification.publicRecommendation,
+              improvementDescription: verification.improvementDescription,
+              remainingConcerns: verification.remainingConcerns,
+              confidence: verification.confidence
+            },
+            resolutionPhotoUrl: resolutionPhotoUrl
+          });
+        });
+        
+      } catch (verificationError) {
+        console.error('AI verification error:', verificationError);
+        // Even if AI verification fails, we still want to save the resolution
+        // This allows admins to manually verify if needed
+        
+        const updateQuery = `
+          UPDATE reports 
+          SET status = 'resolved',
+              resolution_photo_url = ?,
+              resolution_date = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `;
+        
+        db.run(updateQuery, [
+          resolutionPhotoUrl,
+          id
+        ], function(updateErr) {
+          if (updateErr) {
+            console.error('Database update error:', updateErr.message);
+            return res.status(500).json({ error: 'Failed to update report' });
+          }
+          
+          res.status(200).json({
+            message: 'Resolution photo uploaded successfully (AI verification unavailable)',
+            reportId: id,
+            resolutionPhotoUrl: resolutionPhotoUrl,
+            verification: {
+              resolved: false,
+              verificationScore: 0,
+              quality: 'NEEDS_REVIEW',
+              recommendation: 'NEEDS_REVIEW',
+              improvementDescription: 'Manual review required - AI verification was unavailable',
+              remainingConcerns: ['AI service unavailable', 'Manual verification recommended'],
+              confidence: 0
+            }
+          });
+        });
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error processing resolution:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// GET /report/:id/resolution - Get resolution verification details
+app.get('/report/:id/resolution', (req, res) => {
+  const { id } = req.params;
+  
+  const query = `
+    SELECT id, status, resolution_photo_url, resolution_date, 
+           before_after_comparison, ai_verification_score, photo_url
+    FROM reports 
+    WHERE id = ?
+  `;
+  
+  db.get(query, [id], (err, report) => {
+    if (err) {
+      console.error('Database error:', err.message);
+      return res.status(500).json({ error: 'Failed to fetch resolution data' });
+    }
+    
+    if (!report) {
+      return res.status(404).json({ error: 'Report not found' });
+    }
+    
+    if (report.status !== 'resolved' || !report.resolution_photo_url) {
+      return res.status(404).json({ error: 'No resolution data available' });
+    }
+    
+    const verification = report.before_after_comparison ? JSON.parse(report.before_after_comparison) : null;
+    
+    res.json({
+      reportId: report.id,
+      beforePhoto: report.photo_url,
+      afterPhoto: report.resolution_photo_url,
+      resolutionDate: report.resolution_date,
+      verificationScore: report.ai_verification_score,
+      verification: verification
+    });
+  });
 });
 
 // Health check endpoint

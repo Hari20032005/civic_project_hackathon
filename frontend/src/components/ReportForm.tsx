@@ -175,11 +175,21 @@ const ReportForm: React.FC = () => {
 
       if (response.status === 201) {
         const result = response.data;
-        setSuccessMessage('Report submitted successfully! Thank you for helping improve our community.');
+        
+        if (result.isDuplicate) {
+          setSuccessMessage(`Report submitted successfully! Our AI detected this might be similar to an existing report #${result.primaryReportId}. Both reports will be reviewed by administrators.`);
+        } else {
+          setSuccessMessage('Report submitted successfully! Thank you for helping improve our community.');
+        }
         
         // Show AI analysis if available
         if (result.aiAnalysis) {
-          setAiAnalysis(result.aiAnalysis);
+          setAiAnalysis({
+            ...result.aiAnalysis,
+            isDuplicate: result.isDuplicate,
+            duplicateInfo: result.duplicateInfo,
+            nearbyReportsChecked: result.nearbyReportsChecked
+          });
           setShowAiAnalysis(true);
         }
         
@@ -287,10 +297,38 @@ const ReportForm: React.FC = () => {
             </p>
           </div>
           
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', fontSize: '0.875rem', color: '#666' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '1rem', fontSize: '0.875rem', color: '#666' }}>
             <div><strong>Est. Time:</strong> {aiAnalysis.estimatedTime}</div>
             <div><strong>Est. Cost:</strong> {aiAnalysis.estimatedCost || 'Variable'}</div>
+            {aiAnalysis.nearbyReportsChecked !== undefined && (
+              <div><strong>Nearby Reports Checked:</strong> {aiAnalysis.nearbyReportsChecked}</div>
+            )}
           </div>
+          
+          {aiAnalysis.isDuplicate && aiAnalysis.duplicateInfo && (
+            <div style={{
+              backgroundColor: '#fff3e0',
+              border: '2px solid #ff9800',
+              borderRadius: '8px',
+              padding: '1rem',
+              marginTop: '1rem'
+            }}>
+              <h4 style={{ margin: '0 0 0.5rem 0', color: '#e65100' }}>🔄 Potential Duplicate Detected</h4>
+              <p style={{ margin: '0 0 1rem 0', color: '#e65100' }}>
+                {aiAnalysis.duplicateInfo.message}
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '0.5rem', fontSize: '0.8rem' }}>
+                <div><strong>Similarity:</strong> {aiAnalysis.duplicateInfo.similarityScore}%</div>
+                <div><strong>Distance:</strong> {aiAnalysis.duplicateInfo.distance.toFixed(1)}m</div>
+                <div><strong>Primary Report:</strong> #{aiAnalysis.duplicateInfo.primaryReportId}</div>
+              </div>
+              {aiAnalysis.duplicateInfo.reasoning && (
+                <div style={{ marginTop: '0.5rem', fontSize: '0.8rem', fontStyle: 'italic', color: '#bf360c' }}>
+                  <strong>AI Reasoning:</strong> {aiAnalysis.duplicateInfo.reasoning}
+                </div>
+              )}
+            </div>
+          )}
           
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem' }}>
             <button
