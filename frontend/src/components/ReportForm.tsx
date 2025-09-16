@@ -26,6 +26,8 @@ const ReportForm: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Default location (you can change this to your city's coordinates)
+
+  // Default location (you can change this to your city's coordinates)
   const DEFAULT_LOCATION = { latitude: 28.6139, longitude: 77.2090 }; // New Delhi coordinates
 
   useEffect(() => {
@@ -438,7 +440,7 @@ const ReportForm: React.FC = () => {
               )}
             </div>
           )}
-          {!location && !isGettingLocation && (
+                    {!location && !isGettingLocation && (
             <div>
               <div style={{ 
                 backgroundColor: '#fff3e0', 
@@ -484,14 +486,18 @@ const ReportForm: React.FC = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowManualLocation(!showManualLocation)}
+                  onClick={() => {
+                    setLocation(DEFAULT_LOCATION);
+                    // Try to get address for the default coordinates
+                    reverseGeocode(DEFAULT_LOCATION.latitude, DEFAULT_LOCATION.longitude);
+                  }}
                   className="btn btn-small"
                   style={{ 
-                    backgroundColor: showManualLocation ? '#f44336' : '#ff9800',
+                    backgroundColor: '#4caf50',
                     color: 'white'
                   }}
                 >
-                  {showManualLocation ? '❌ Cancel Manual Entry' : '✏️ Enter Coordinates'}
+                  🏙️ Use Default Location
                 </button>
               </div>
             </div>

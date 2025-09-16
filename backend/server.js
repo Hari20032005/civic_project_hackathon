@@ -489,11 +489,13 @@ app.get('/verify/:id', async (req, res) => {
     }
     
     try {
-      // Verify on blockchain
+      // Verify on blockchain using the correct timestamp
+      const timestamp = row.last_blockchain_update ? new Date(row.last_blockchain_update).getTime() : Date.now();
+      
       const verificationResult = await blockchainService.verifyComplaint(
         parseInt(id),
         row.status,
-        new Date(row.last_blockchain_update).getTime()
+        timestamp
       );
       
       res.json({
