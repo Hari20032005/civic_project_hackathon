@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import axios from 'axios';
 import 'leaflet/dist/leaflet.css';
@@ -290,9 +291,14 @@ const AdminDashboard: React.FC = () => {
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <h1>Admin Dashboard</h1>
-        <button onClick={fetchReports} className="btn btn-small">
-          Refresh Data
-        </button>
+        <div style={{ display: 'flex', gap: '1rem' }}>
+          <button onClick={fetchReports} className="btn btn-small">
+            Refresh Data
+          </button>
+          <Link to="/analytics" className="btn btn-small" style={{ textDecoration: 'none' }}>
+            Predictive Analytics
+          </Link>
+        </div>
       </div>
 
       {/* Statistics Cards */}

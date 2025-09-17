@@ -31,6 +31,13 @@ A comprehensive full-stack web application that leverages **Google Gemini Vision
 - **Reliable Processing**: Retry logic for AI service overloads with graceful fallback
 - **Robust Verification**: Works even when AI services are temporarily unavailable
 
+### 📱 WhatsApp Bot Integration (for accessibility)
+- **No App Required**: Citizens can report issues directly via WhatsApp
+- **Photo + Location Support**: Send photos with automatic location detection
+- **AI Analysis**: Same Gemini Vision AI processing as web reports
+- **Real-time Confirmation**: Instant feedback with report ID
+- **Seamless Integration**: Reports appear in the same dashboard as web reports
+
 ### 👥 Citizen Features (Public)
 - **Smart Report Submission**: Take or upload photos with instant AI analysis
 - **Real-time AI Feedback**: See immediate classification and priority assessment
@@ -60,6 +67,7 @@ A comprehensive full-stack web application that leverages **Google Gemini Vision
 - **UUID** for unique file identification
 - **Auto-Escalation Service** for SLA monitoring and report escalation
 - **Blockchain Audit Trail** for immutable report tracking
+- **Twilio WhatsApp Integration** for citizen accessibility
 
 ### 🔗 Blockchain Audit Trail
 - **Immutable Record**: All report modifications logged on blockchain
@@ -82,27 +90,29 @@ A comprehensive full-stack web application that leverages **Google Gemini Vision
 ```
 civic-issue-reporter/
 ├── backend/
-│   ├── server.js           # Main Express server with AI integration
-│   ├── database.js         # Enhanced SQLite schema with AI fields
-│   ├── aiService.js        # 🤖 Gemini Vision AI service
-│   ├── package.json        # Backend dependencies (includes AI packages)
-│   ├── .env.example        # Environment configuration template
-│   └── reports.db          # SQLite database with AI analysis data
+│   ├── routes/
+│   │   └── whatsapp.js          # 📱 WhatsApp bot integration
+│   ├── server.js                # Main Express server with AI integration
+│   ├── database.js              # Enhanced SQLite schema with AI fields
+│   ├── aiService.js             # 🤖 Gemini Vision AI service
+│   ├── package.json             # Backend dependencies (includes AI packages)
+│   ├── .env.example             # Environment configuration template
+│   └── reports.db               # SQLite database with AI analysis data
 ├── frontend/
 │   ├── src/
-│   │   ├── components/     # Enhanced React components
-│   │   │   ├── ReportForm.tsx       # 🤖 AI-powered submission form
-│   │   │   ├── MapView.tsx          # Interactive map with AI insights
-│   │   │   └── AdminDashboard.tsx   # 📊 AI analytics dashboard
-│   │   ├── App.tsx         # Main app with routing
-│   │   └── App.css         # Modern responsive styling
+│   │   ├── components/          # Enhanced React components
+│   │   │   ├── ReportForm.tsx         # 🤖 AI-powered submission form
+│   │   │   ├── MapView.tsx            # Interactive map with AI insights
+│   │   │   └── AdminDashboard.tsx     # 📊 AI analytics dashboard
+│   │   ├── App.tsx              # Main app with routing
+│   │   └── App.css              # Modern responsive styling
 │   ├── public/
-│   │   ├── manifest.json   # PWA manifest for mobile app
-│   │   └── index.html      # Optimized HTML template
-│   └── package.json        # Frontend dependencies
-├── uploads/                # Uploaded images with AI processing
-├── start.sh               # 🚀 One-click startup script
-└── README.md              # This comprehensive guide
+│   │   ├── manifest.json        # PWA manifest for mobile app
+│   │   └── index.html           # Optimized HTML template
+│   └── package.json             # Frontend dependencies
+├── uploads/                     # Uploaded images with AI processing
+├── start.sh                     # 🚀 One-click startup script
+└── README.md                    # This comprehensive guide
 ```
 
 ## 🔌 API Endpoints
@@ -249,6 +259,23 @@ Get a single report by ID with AI analysis.
 Health check endpoint.
 - **Response**: `{ status: 'OK', timestamp }`
 
+### 📱 WhatsApp Bot Integration Endpoints
+
+#### POST /whatsapp/webhook
+Receive and process WhatsApp messages with photo attachments.
+- **Body**: Twilio webhook payload with `MediaUrl0`, `Body`, `Latitude`, `Longitude`
+- **Process**: 
+  1. Download photo from WhatsApp
+  2. Run AI analysis with Gemini Vision
+  3. Store report in database
+  4. Send confirmation to user
+- **Response**: TwiML confirmation message
+
+#### POST /whatsapp/status
+Receive WhatsApp message status callbacks.
+- **Body**: Twilio status callback payload
+- **Process**: Log status updates for debugging
+
 ## 🚀 Installation & Setup
 
 ### Prerequisites
@@ -266,6 +293,46 @@ cd civic-issue-reporter
 chmod +x start.sh
 ./start.sh
 ```
+
+### 📱 WhatsApp Bot Setup (Optional)
+
+#### Prerequisites
+- Twilio account (free tier available)
+- Ngrok for exposing localhost to the internet
+
+#### Setup Steps
+1. **Install Ngrok**:
+   ```bash
+   npm install -g ngrok
+   ```
+
+2. **Start your backend server**:
+   ```bash
+   cd backend
+   npm run dev
+   ```
+
+3. **Expose your backend with Ngrok**:
+   ```bash
+   ngrok http 5000
+   ```
+   Note the HTTPS URL provided by Ngrok (e.g., https://abc123.ngrok.io)
+
+4. **Set up Twilio WhatsApp Sandbox**:
+   - Go to [Twilio Console](https://console.twilio.com/)
+   - Navigate to Messaging → Try it out → WhatsApp Sandbox
+   - Note your sandbox number and join code
+   - Join the sandbox by sending the join code from your WhatsApp
+   - Set the webhook URL to:
+     ```
+     https://YOUR_NGROK_URL/whatsapp/webhook
+     ```
+     (Replace YOUR_NGROK_URL with your actual Ngrok URL)
+
+5. **Testing**:
+   - Send a photo with a description to your Twilio sandbox number
+   - The bot will process the image with AI analysis
+   - Report will be stored in the database and visible in the admin dashboard
 
 ### 🔧 Manual Setup
 
@@ -327,7 +394,14 @@ If you don't configure the Gemini API key, the system will:
      - Department assignment
      - Technical assessment
 
-2. **🗺️ Interactive Map Exploration**:
+2. **📱 WhatsApp Reporting** (No app required):
+   - Send a photo of the issue to the WhatsApp number
+   - Share your location or include coordinates in the message
+   - Add a brief description of the problem
+   - Receive instant confirmation with report ID
+   - Track your report through the web interface
+
+3. **🗺️ Interactive Map Exploration**:
    - Go to "View Reports" for the interactive map
    - **Color-coded markers** show issue status:
      - 🔴 Red: Pending issues

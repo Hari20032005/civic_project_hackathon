@@ -112,6 +112,9 @@ class CivicIssueDetector {
   }
 
   async analyzeImage(imagePath, userDescription = '') {
+    console.log(`Starting AI analysis for image: ${imagePath}`);
+    console.log(`User description: ${userDescription || 'None provided'}`);
+    
     // Retry logic for AI service overload
     const maxRetries = 3;
     const retryDelay = 5000; // 5 seconds
@@ -127,10 +130,12 @@ class CivicIssueDetector {
 
         // Preprocess image
         processedImagePath = await this.preprocessImage(imagePath);
+        console.log(`Image preprocessed: ${processedImagePath}`);
         
         // Read image file
         const imageData = await fs.readFile(processedImagePath);
         const base64Image = imageData.toString('base64');
+        console.log(`Image read successfully, size: ${imageData.length} bytes`);
 
         // Create the prompt for civic issue detection
         const prompt = `
@@ -172,6 +177,7 @@ class CivicIssueDetector {
           }
         `;
 
+        console.log('Sending request to Gemini API...');
         const result = await this.model.generateContent([
           prompt,
           {
@@ -184,9 +190,11 @@ class CivicIssueDetector {
 
         const response = await result.response;
         const text = response.text();
+        console.log('Received response from Gemini API:', text.substring(0, 200) + '...');
         
         // Parse JSON response
         const analysis = JSON.parse(text.replace(/```json|```/g, '').trim());
+        console.log('Parsed AI analysis:', JSON.stringify(analysis, null, 2));
         
         // Enhance with category metadata
         const categoryInfo = this.issueCategories[analysis.category] || this.issueCategories['OTHER'];
@@ -266,6 +274,12 @@ class CivicIssueDetector {
       } else if (descriptionLower.includes('sidewalk') || descriptionLower.includes('pavement')) {
         category = 'BROKEN_SIDEWALK';
         severity = 'MEDIUM';
+      } else if (descriptionLower.includes('leak')) {
+        category = 'WATER_LEAK';
+        severity = 'HIGH';
+      } else if (descriptionLower.includes('sign')) {
+        category = 'DAMAGED_SIGN';
+        severity = 'LOW';
       }
       assessmentText = `Issue categorized based on description keywords: ${description}`;
     } else {

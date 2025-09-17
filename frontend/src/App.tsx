@@ -4,6 +4,7 @@ import ReportForm from './components/ReportForm';
 import MapView from './components/MapView';
 import AdminDashboard from './components/AdminDashboard';
 import AdminLogin from './components/AdminLogin';
+import PredictiveAnalytics from './components/PredictiveAnalytics';
 import './App.css';
 
 function App() {
@@ -50,7 +51,8 @@ function App() {
               <li><Link to="/map" className="nav-link">View Reports</Link></li>
               {isAdminLoggedIn ? (
                 <>
-                  <li><Link to="/admin" className="nav-link">Admin Dashboard</Link></li>
+                  <li><Link to="/admin" className="nav-link">Dashboard</Link></li>
+                  <li><Link to="/analytics" className="nav-link">Analytics</Link></li>
                   <li>
                     <button 
                       onClick={handleLogout}
@@ -83,6 +85,14 @@ function App() {
               element={
                 isAdminLoggedIn ? 
                 <AdminDashboard /> : 
+                <AdminLogin onLoginSuccess={handleLoginSuccess} />
+              } 
+            />
+            <Route 
+              path="/analytics" 
+              element={
+                isAdminLoggedIn ? 
+                <PredictiveAnalytics /> : 
                 <AdminLogin onLoginSuccess={handleLoginSuccess} />
               } 
             />

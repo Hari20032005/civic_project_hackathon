@@ -9,6 +9,7 @@ const db = require('./database');
 const aiService = require('./aiService');
 const escalationService = require('./escalationService');
 const blockchainService = require('./blockchain');
+const whatsappRoutes = require('./routes/whatsapp');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -772,6 +773,9 @@ app.get('/escalations', (req, res) => {
   });
 });
 
+// WhatsApp Bot Routes
+app.use('/whatsapp', whatsappRoutes);
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
@@ -851,6 +855,27 @@ app.get('/admin/reports', verifyAdmin, (req, res) => {
     res.json(reportsWithAI);
   });
 });
+
+// Protected admin route to get predictive analytics
+const predictiveAnalyticsService = require('./predictiveAnalytics');
+
+app.get('/admin/analytics/predictive', verifyAdmin, async (req, res) => {
+  try {
+    const analytics = await predictiveAnalyticsService.getPredictiveAnalytics();
+    res.json(analytics);
+  } catch (error) {
+    console.error('Predictive analytics error:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate predictive analytics',
+      message: error.message
+    });
+  }
+});
+
+// WhatsApp Bot Routes
+app.use('/whatsapp', whatsappRoutes);
+
+// Health check endpoint
 
 // Error handling middleware
 app.use((error, req, res, next) => {
