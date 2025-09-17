@@ -84,11 +84,27 @@ const AdminDashboard: React.FC = () => {
 
   const fetchReports = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/reports`);
+      // Get token from localStorage
+      const token = localStorage.getItem('adminToken');
+      
+      const response = await axios.get(`${API_BASE_URL}/admin/reports`, {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      });
       setReports(response.data);
       setError('');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching reports:', error);
+      
+      // Handle unauthorized access
+      if (error.response && error.response.status === 401) {
+        // Clear token and redirect to login
+        localStorage.removeItem('adminToken');
+        window.location.href = '/admin';
+        return;
+      }
+      
       setError('Failed to load reports. Please try again.');
     } finally {
       setLoading(false);

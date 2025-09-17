@@ -26,7 +26,7 @@ class BlockchainService {
    * Generate a complaint hash
    * @param {number} complaintId - ID of the complaint
    * @param {string} status - Current status of the complaint
-   * @param {string} timestamp - Timestamp of the event
+   * @param {number} timestamp - Timestamp of the event (as number)
    * @returns {string} SHA256 hash of the complaint data
    */
   generateComplaintHash(complaintId, status, timestamp) {
@@ -38,16 +38,19 @@ class BlockchainService {
    * Log a complaint event (simulated blockchain transaction)
    * @param {number} complaintId - ID of the complaint
    * @param {string} status - Current status of the complaint
-   * @param {string} timestamp - Timestamp of the event
+   * @param {number} timestamp - Timestamp of the event (as number)
    * @returns {Promise<string>} Simulated transaction hash
    */
   async logComplaintEvent(complaintId, status, timestamp) {
     try {
+      // Ensure timestamp is a number
+      const timestampNum = typeof timestamp === 'number' ? timestamp : Date.now();
+      
       // Generate complaint hash
-      const complaintHash = this.generateComplaintHash(complaintId, status, timestamp);
+      const complaintHash = this.generateComplaintHash(complaintId, status, timestampNum);
       
       // Generate a simulated transaction hash
-      const txData = `${complaintHash}-${Date.now()}-${Math.random()}`;
+      const txData = `${complaintHash}-${timestampNum}-${Math.random()}`;
       const transactionHash = crypto.createHash('sha256').update(txData).digest('hex').substring(0, 66);
       
       // Store the event (simulating blockchain storage)
@@ -55,7 +58,7 @@ class BlockchainService {
         complaintId,
         complaintHash,
         status,
-        timestamp,
+        timestamp: timestampNum,
         transactionHash,
         loggedAt: new Date().toISOString()
       };
@@ -65,7 +68,7 @@ class BlockchainService {
       console.log('Complaint event logged (simulated):', {
         complaintId,
         status,
-        timestamp,
+        timestamp: timestampNum,
         complaintHash,
         transactionHash
       });
@@ -81,13 +84,16 @@ class BlockchainService {
    * Verify if a complaint exists in our simulated blockchain
    * @param {number} complaintId - ID of the complaint
    * @param {string} status - Status to verify
-   * @param {string} timestamp - Timestamp to verify
+   * @param {number} timestamp - Timestamp to verify (as number)
    * @returns {Promise<object|null>} Event data if found, null otherwise
    */
   async verifyComplaint(complaintId, status, timestamp) {
     try {
+      // Ensure timestamp is a number
+      const timestampNum = typeof timestamp === 'number' ? timestamp : Date.now();
+      
       // Generate complaint hash
-      const complaintHash = this.generateComplaintHash(complaintId, status, timestamp);
+      const complaintHash = this.generateComplaintHash(complaintId, status, timestampNum);
       
       // Check if event exists
       const event = this.blockchainEvents.get(complaintHash);
@@ -96,7 +102,7 @@ class BlockchainService {
         console.log('Complaint verified:', {
           complaintId,
           status,
-          timestamp,
+          timestamp: timestampNum,
           complaintHash,
           transactionHash: event.transactionHash
         });
@@ -107,7 +113,7 @@ class BlockchainService {
       console.log('Complaint not found on blockchain:', {
         complaintId,
         status,
-        timestamp,
+        timestamp: timestampNum,
         complaintHash
       });
       

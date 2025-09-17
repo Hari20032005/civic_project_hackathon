@@ -152,12 +152,12 @@ app.post('/report', upload.single('photo'), async (req, res) => {
     
     // Log event on blockchain
     let blockchainTxHash = null;
+    const eventTimestamp = Date.now();
     try {
-      const timestamp = Date.now();
       blockchainTxHash = await blockchainService.logComplaintEvent(
         0, // Will be replaced with actual ID after insertion
         'pending',
-        timestamp
+        eventTimestamp
       );
       console.log('Blockchain transaction hash:', blockchainTxHash);
     } catch (blockchainError) {
@@ -216,7 +216,7 @@ app.post('/report', upload.single('photo'), async (req, res) => {
           blockchainService.logComplaintEvent(
             duplicateReportId,
             'pending',
-            Date.now()
+            eventTimestamp
           ).catch(error => {
             console.error('Blockchain update error:', error.message);
           });
@@ -312,7 +312,7 @@ app.post('/report', upload.single('photo'), async (req, res) => {
           blockchainService.logComplaintEvent(
             reportId,
             'pending',
-            Date.now()
+            eventTimestamp
           ).catch(error => {
             console.error('Blockchain update error:', error.message);
           });
@@ -407,11 +407,12 @@ app.patch('/report/:id', (req, res) => {
     
     // Log status update on blockchain
     let blockchainTxHash = null;
+    const statusUpdateTimestamp = Date.now();
     try {
       blockchainTxHash = await blockchainService.logComplaintEvent(
         parseInt(id),
         status,
-        Date.now()
+        statusUpdateTimestamp
       );
       console.log('Blockchain transaction hash for status update:', blockchainTxHash);
     } catch (blockchainError) {
@@ -490,7 +491,17 @@ app.get('/verify/:id', async (req, res) => {
     
     try {
       // Verify on blockchain using the correct timestamp
-      const timestamp = row.last_blockchain_update ? new Date(row.last_blockchain_update).getTime() : Date.now();
+      // We need to use the same timestamp that was used when logging the event
+      let timestamp;
+      if (row.last_blockchain_update) {
+        // If we have a last_blockchain_update, use that timestamp
+        timestamp = new Date(row.last_blockchain_update).getTime();
+      } else {
+        // Otherwise, fallback to created_at or current time
+        timestamp = row.created_at ? new Date(row.created_at).getTime() : Date.now();
+      }
+      
+      console.log(`Verifying complaint #${id} with status '${row.status}' and timestamp ${timestamp}`);
       
       const verificationResult = await blockchainService.verifyComplaint(
         parseInt(id),
@@ -613,7 +624,8 @@ app.post('/report/:id/resolve', upload.single('resolutionPhoto'), async (req, re
               before_after_comparison = ?,
               ai_verification_score = ?,
               escalated = 0,
-              escalation_notified = 0
+              escalation_notified = 0,
+              last_blockchain_update = ?
           WHERE id = ?
         `;
         
@@ -621,6 +633,7 @@ app.post('/report/:id/resolve', upload.single('resolutionPhoto'), async (req, re
           resolutionPhotoUrl,
           JSON.stringify(verification),
           verification.verificationScore,
+          new Date().toISOString(),
           id
         ], function(updateErr) {
           if (updateErr) {
@@ -655,12 +668,14 @@ app.post('/report/:id/resolve', upload.single('resolutionPhoto'), async (req, re
               resolution_photo_url = ?,
               resolution_date = CURRENT_TIMESTAMP,
               escalated = 0,
-              escalation_notified = 0
+              escalation_notified = 0,
+              last_blockchain_update = ?
           WHERE id = ?
         `;
         
         db.run(updateQuery, [
           resolutionPhotoUrl,
+          new Date().toISOString(),
           id
         ], function(updateErr) {
           if (updateErr) {
@@ -760,6 +775,81 @@ app.get('/escalations', (req, res) => {
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
+});
+
+// Admin login endpoint
+app.post('/admin/login', (req, res) => {
+  const { username, password } = req.body;
+  
+  // Simple hardcoded credentials (in a real app, use proper authentication)
+  if (username === 'admin' && password === 'admin') {
+    // In a real app, you would generate a proper token here
+    res.json({ 
+      success: true, 
+      message: 'Login successful',
+      token: 'admin-token-' + Date.now() // Simple token for demo
+    });
+  } else {
+    res.status(401).json({ 
+      success: false, 
+      message: 'Invalid credentials' 
+    });
+  }
+});
+
+// Admin verify token middleware (simplified)
+const verifyAdmin = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ message: 'Access denied. No token provided.' });
+  }
+  
+  // Simple token verification (in a real app, use proper JWT verification)
+  if (token.startsWith('admin-token-')) {
+    next();
+  } else {
+    return res.status(401).json({ message: 'Invalid token.' });
+  }
+};
+
+// Protected admin route to get all reports
+app.get('/admin/reports', verifyAdmin, (req, res) => {
+  const showDuplicates = req.query.includeDuplicates === 'true';
+  const query = showDuplicates 
+    ? `SELECT * FROM reports 
+       ORDER BY 
+         escalated DESC,
+         urgent DESC,
+         CASE severity WHEN 'HIGH' THEN 3 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 1 ELSE 0 END DESC,
+         duplicate_count DESC,
+         created_at DESC`
+    : `SELECT * FROM reports 
+       WHERE is_primary = 1 
+       ORDER BY 
+         escalated DESC,
+         urgent DESC,
+         CASE severity WHEN 'HIGH' THEN 3 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 1 ELSE 0 END DESC,
+         duplicate_count DESC,
+         created_at DESC`;
+  
+  db.all(query, [], (err, rows) => {
+    if (err) {
+      console.error('Database error:', err.message);
+      return res.status(500).json({ error: 'Failed to fetch reports' });
+    }
+    
+    // Parse AI analysis JSON for each row
+    const reportsWithAI = rows.map(row => ({
+      ...row,
+      ai_analysis: row.ai_analysis ? JSON.parse(row.ai_analysis) : null,
+      urgent: Boolean(row.urgent),
+      escalated: Boolean(row.escalated)
+    }));
+    
+    res.json(reportsWithAI);
+  });
 });
 
 // Error handling middleware
